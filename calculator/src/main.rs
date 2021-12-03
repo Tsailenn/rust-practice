@@ -61,32 +61,53 @@ fn calculator(operation: Vec<String>) -> f64 {
     let mut operator_stack : Vec<char> = vec!();
     let mut postfix_stack : Vec<PostfixEntry> = vec!();
 
-    let operators : HashMap<String, u8> = HashMap::from_iter(IntoIter::new([
-        (String::from("+"), 0),
-        (String::from("-"), 0),
-        (String::from("*"), 1),
-        (String::from("/"), 1),
-        (String::from("^"), 2),
+    let operators : HashMap<char, u8> = HashMap::from_iter(IntoIter::new([
+        ('+', 0),
+        ('-', 0),
+        ('*', 1),
+        ('/', 1),
+        ('^', 2),
     ]));
 
     operation.iter().for_each(|entry| {
         let parsed = entry.parse::<f64>();
-        if let Ok(value) = parsed {
+        let entry_char = entry.chars().collect::<Vec<char>>()[0];
+        if let Ok(value) = parsed { //if it finds a number, push it into the postfix stack
             postfix_stack.push(PostfixEntry::num(value));
-        } else {
-            //let peeked = &((&postfix_stack)[&postfix_stack.len() - 1]);
+        } else { //if it finds an operand, operate on it
 
-            if (&postfix_stack).len() > 0 {
-                let peeked = &(&postfix_stack)[&postfix_stack.len() - 1];
+            if (&operator_stack).len() > 0 {
+                let mut peeked = (&operator_stack)[&operator_stack.len() - 1]; //peeks the top of the operator stack
+                let mut peeked_value = operators.get(&peeked).unwrap();
 
-                match peeked {
-                    PostfixEntry::num(number) => true,
-                    PostfixEntry::operator(operand) => false,
-                    _ => false,
-                };
+                let entry_value = operators.get(&entry_char).unwrap();
+
+                if operators.contains_key(&entry_char) {
+                    while !peeked.eq(&'(') && entry_value < peeked_value && (&operator_stack).len() > 0 {
+                        peeked = (&mut operator_stack).pop().unwrap();
+                        postfix_stack.push(PostfixEntry::operator(peeked.to_string()));
+    
+                        peeked_value =  (&operators).get(&peeked).unwrap();
+                    }
+                    operator_stack.push(entry_char);
+                }
+                else if entry_char.eq(&'('){
+                    operator_stack.push(entry_char);
+                }
+                else if entry_char.eq(&')'){
+                    while !peeked.eq(&'(') && (&operator_stack).len() > 0 {
+                        postfix_stack.push(PostfixEntry::operator(peeked.to_string()));
+                        peeked = (&mut operator_stack).pop().unwrap();
+                    }
+                    if (&operator_stack).len() > 0 {
+                        operator_stack.pop().unwrap();
+                    }
+                }
             }
         }
     });
+
+    
 
     0.1
 }
