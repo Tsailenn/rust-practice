@@ -1,113 +1,195 @@
-use std::any::type_name;
-use std::any::Any;
+
+
+mod stack;
+mod unit;
+
 use std::array::IntoIter;
 use std::collections::HashMap;
-use std::fmt::Display;
 use std::iter::FromIterator;
 
-struct Precedences {
-    rank: u8,
-    operators: Vec<String>,
-}
+use stack::Stack;
+use unit::Unit;
 
-enum PostfixEntry {
-    operator(String),
-    num(f64),
-}
 
-fn main() {
+pub fn lex(mut operations : String) -> stack::Stack<unit::Unit> {
+    let mut lexed = stack::Stack::<unit::Unit>::new();
+    let borrow_lexed = &mut lexed;
+    let mut current_entry: String = String::from("");
+    let borrow_entry = &mut current_entry;
 
-    let mut operation : String = String::from("23 * (14+ 3) - 4 / 290");
+    operations.retain(|c| !c.is_whitespace());
     
-    //convert to vector
-    let mut vectorized = parse_to_vec(operation);
-
-    println!("{:#?}", vectorized);
-}
-
-fn parse_to_vec(mut data: String) -> Vec<String> {
-    data.retain(|c| !c.is_whitespace());
-
-    let mut result : Vec<String> = Vec::new();
-
-    for character in data.chars() {
-        if (&result).len() == 0 {
-            (&mut result).push(character.to_string());
-            continue;
+    for character in operations.chars() {
+        if character.is_digit(10) { //if it's a digit
+            borrow_entry.push(character);
         }
+        else { //if it's an operator
+            if borrow_entry.len() == 0 { //if previous entry has no digit
+                let op = unit::Unit::Operator(character);
+                borrow_lexed.push(op);
+            }
+            else { //if previous entry has digit
+                let num = borrow_entry.parse::<f64>();
+                borrow_entry.clear();
+                
+                borrow_lexed.push(unit::Unit::Number(num.unwrap()));
 
-        let result_length = (&result).len();
-
-        let mut last_entry  = &mut(result[result_length - 1]);
-
-        if last_entry.clone().pop().unwrap().is_digit(10) && character.is_digit(10) {
-            last_entry.push(character);
-        }
-        else {
-            (&mut result).push(character.to_string());
+                borrow_lexed.push(unit::Unit::Operator(character));
+            }
         }
     }
 
-    result
+    if borrow_entry.len() != 0 {
+        borrow_lexed.push(unit::Unit::Number(borrow_entry.parse::<f64>().unwrap()));
+    }
+
+    lexed
 }
 
-fn get_last_char(data: &str) -> char {
-    let length = data.len();
+pub fn infix2postfix(mut expression : stack::Stack<unit::Unit>) -> Stack<Unit> {
+    expression = expression.reverse();
+    let p_expression = &mut expression; //points to mutable input
 
-    data.chars().collect::<Vec<char>>()[length - 1]
-}
+    //output and its pointer
+    let mut output = Stack::<Unit>::new();
+    let p_output = &mut output;
 
-fn calculator(operation: Vec<String>) -> f64 {
-    let mut operator_stack : Vec<char> = vec!();
-    let mut postfix_stack : Vec<PostfixEntry> = vec!();
+    //operator stack and its pointer
+    let mut op_stack = Stack::<Unit>::new();
+    let p_op_stack = &mut op_stack;
 
     let operators : HashMap<char, u8> = HashMap::from_iter(IntoIter::new([
-        ('+', 0),
-        ('-', 0),
-        ('*', 1),
-        ('/', 1),
-        ('^', 2),
+        ('(', 0),
+        (')', 0),
+        ('+', 1),
+        ('-', 1),
+        ('*', 2),
+        ('/', 2),
+        ('^', 3),
     ]));
+    let l_ops = ['+', '-', '*', '/', '^'];
 
-    operation.iter().for_each(|entry| {
-        let parsed = entry.parse::<f64>();
-        let entry_char = entry.chars().collect::<Vec<char>>()[0];
-        if let Ok(value) = parsed { //if it finds a number, push it into the postfix stack
-            postfix_stack.push(PostfixEntry::num(value));
-        } else { //if it finds an operand, operate on it
-
-            if (&operator_stack).len() > 0 {
-                let mut peeked = (&operator_stack)[&operator_stack.len() - 1]; //peeks the top of the operator stack
-                let mut peeked_value = operators.get(&peeked).unwrap();
-
-                let entry_value = operators.get(&entry_char).unwrap();
-
-                if operators.contains_key(&entry_char) {
-                    while !peeked.eq(&'(') && entry_value < peeked_value && (&operator_stack).len() > 0 {
-                        peeked = (&mut operator_stack).pop().unwrap();
-                        postfix_stack.push(PostfixEntry::operator(peeked.to_string()));
-    
-                        peeked_value =  (&operators).get(&peeked).unwrap();
+    while let Some(u) = p_expression.peek() {
+        match u {
+            unit::Unit::Number(_) => {
+                p_output.push(p_expression.pop().unwrap());
+            },
+            unit::Unit::Operator(op) => {
+                if l_ops.contains(op) {
+                    let precedence_peek = operators.get(op).unwrap();//new operator's value
+                    match p_op_stack.peek() {
+                        Some(Unit::Operator(ops)) => {
+                            let mut precedence_op = operators.get(ops).unwrap(); //stashed operator value
+                            if precedence_peek <= precedence_op {
+                                while let Some(Unit::Operator(ope)) = p_op_stack.peek() {
+                                    precedence_op = operators.get(ope).unwrap();
+                                    if precedence_peek <= precedence_op {
+                                        p_output.push(p_op_stack.pop().unwrap());
+                                    }
+                                    else {
+                                        break;
+                                    }
+                                }
+                            }
+                            p_op_stack.push(p_expression.pop().unwrap());
+                        },
+                        None => {
+                            p_op_stack.push(p_expression.pop().unwrap());
+                        },
+                        _ => {
+                            panic!("sus")
+                        }
                     }
-                    operator_stack.push(entry_char);
+                } else {
+                    match op {
+                        '(' => {
+                            p_op_stack.push(p_expression.pop().unwrap());
+                        },
+                        ')' => {
+                            p_expression.pop();
+                            while let Some(Unit::Operator(o)) = p_op_stack.peek() {
+                                match o {
+                                    '(' => {
+                                        p_op_stack.pop();
+                                    },
+                                    _ => {
+                                        p_output.push(p_op_stack.pop().unwrap());
+                                    }
+                                }
+                            }
+                        },
+                        _ => panic!("sussy")
+                    }
                 }
-                else if entry_char.eq(&'('){
-                    operator_stack.push(entry_char);
-                }
-                else if entry_char.eq(&')'){
-                    while !peeked.eq(&'(') && (&operator_stack).len() > 0 {
-                        postfix_stack.push(PostfixEntry::operator(peeked.to_string()));
-                        peeked = (&mut operator_stack).pop().unwrap();
-                    }
-                    if (&operator_stack).len() > 0 {
-                        operator_stack.pop().unwrap();
-                    }
+                
+                
+                // let precedence_op = operators.get();
+
+            }
+        }
+    }
+
+    while let Some(u) = p_op_stack.pop() {
+        p_output.push(u);
+    }
+
+    output
+}
+
+pub fn postfix_calculation(mut data : Stack<Unit>) -> f64 {
+
+    data = data.reverse();
+
+    let mut num_stack = Stack::<f64>::new();
+    let p_num_stack = &mut num_stack;
+
+    while let Some(u) = data.pop() {
+        match u {
+            Unit::Number(num) => {
+                p_num_stack.push(num);
+            },
+            Unit::Operator(op) => {
+                let right = p_num_stack.pop().unwrap();
+                let left = p_num_stack.pop().unwrap();
+
+                match op {
+                    '+' => {
+                        p_num_stack.push(left + right);
+                    },
+                    '-' => {
+                        p_num_stack.push(left - right);
+                    },
+                    '*' => {
+                        p_num_stack.push(left * right);
+                    },
+                    '/' => {
+                        p_num_stack.push(left / right);
+                    },
+                    '^' => {
+                        p_num_stack.push(left.powf(right));
+                    },
+                    _ => panic!("amogus")
                 }
             }
         }
-    });
+    }
 
-    
+    num_stack.pop().unwrap()
+}
 
-    0.1
+fn main() {
+    let inp = String::from("420-69");
+    let lexed = lex(inp);
+
+    println!("{:#?}", lexed.stack);
+
+    let postfix = infix2postfix(lexed);
+
+    println!("{:#?}", postfix.stack);
+
+    let result = postfix_calculation(postfix);
+
+    println!("{:#?}", result);
+
+
 }
