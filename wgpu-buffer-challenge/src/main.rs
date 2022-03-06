@@ -243,23 +243,23 @@ impl GameState {
                     self.vertices = vec![
                         Vertex {
                             pos: [-0.0868241, 0.49240386, 0.0],
-                            color: [1.0, 0.0, 0.5],
+                            color: [1.0, 0.0, 0.0],
                         }, // A
                         Vertex {
                             pos: [-0.49513406, 0.06958647, 0.0],
-                            color: [0.5, 1.0, 0.5],
+                            color: [0.0, 1.0, 0.0],
                         }, // B
                         Vertex {
                             pos: [-0.21918549, -0.44939706, 0.0],
-                            color: [0.5, 0.0, 1.0],
+                            color: [0.0, 0.0, 1.0],
                         }, // C
                         Vertex {
                             pos: [0.35966998, -0.3473291, 0.0],
-                            color: [0.5, 0.0, 0.5],
+                            color: [0.0, 0.0, 0.0],
                         }, // D
                         Vertex {
                             pos: [0.44147372, 0.2347359, 0.0],
-                            color: [0.5, 0.0, 0.5],
+                            color: [1.0, 1.0, 1.0],
                         }, // E
                     ];
 
@@ -272,20 +272,20 @@ impl GameState {
                     //not pressed
                     self.vertices = vec![
                         Vertex {
-                            pos: [0.5, -0.5, 0.0],
+                            pos: [0.5, 0.5, 0.0],
                             color: [1.0, 0.0, 0.0],
                         },
                         Vertex {
-                            pos: [0.0, 0.5, 0.0],
+                            pos: [0.0, -0.5, 0.0],
                             color: [0.0, 1.0, 0.0],
                         },
                         Vertex {
-                            pos: [-0.5, -0.5, 0.0],
+                            pos: [-0.5, 0.5, 0.0],
                             color: [0.0, 0.0, 1.0],
                         },
                     ];
 
-                    self.triangles = vec![Triangle { indices: [0, 1, 2] }]
+                    self.triangles = vec![Triangle { indices: [0, 2, 1] }]
                 }
                 res = true;
             }
