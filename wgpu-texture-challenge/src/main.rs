@@ -1,4 +1,4 @@
-use std::{array::IntoIter, fmt::Debug};
+use std::{array::IntoIter, collections::HashMap, fmt::Debug};
 mod texture;
 
 use wgpu::util::DeviceExt;
@@ -12,7 +12,7 @@ use winit::{
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 struct Vertex {
     pos: [f32; 3],
-    color: [f32; 3],
+    tex_coords: [f32; 2],
 }
 
 struct Triangle {
@@ -21,7 +21,7 @@ struct Triangle {
 
 impl Vertex {
     const ATTRIBS: [wgpu::VertexAttribute; 2] =
-        wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3];
+        wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x2];
 
     fn desc<'a>() -> wgpu::VertexBufferLayout<'a> {
         wgpu::VertexBufferLayout {
@@ -57,6 +57,10 @@ struct GameState {
     render_pipelines: Vec<wgpu::RenderPipeline>,
     vertices: Vec<Vertex>,
     triangles: Vec<Triangle>,
+    textures: Vec<texture::Texture>,
+    bind_group_layouts: Vec<wgpu::BindGroupLayout>,
+    bind_groups: Vec<wgpu::BindGroup>,
+    display: u8,
 }
 
 struct Buffers {
@@ -165,10 +169,80 @@ impl GameState {
             ),
         });
 
+        let mut textures = vec![];
+
+        let mut bind_group_layouts = vec![];
+
+        let mut bind_groups = vec![];
+
+        bind_group_layouts.push(device.create_bind_group_layout(
+            &wgpu::BindGroupLayoutDescriptor {
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            multisampled: false,
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(
+                            // SamplerBindingType::Comparison is only for TextureSampleType::Depth
+                            // SamplerBindingType::Filtering if the sample_type of the texture is:
+                            //     TextureSampleType::Float { filterable: true }
+                            // Otherwise you'll get an error.
+                            wgpu::SamplerBindingType::Filtering,
+                        ),
+                        count: None,
+                    },
+                ],
+                label: Some("texture_bind_group_layout_0"),
+            },
+        ));
+
+        textures.push(
+            texture::Texture::from_bytes(
+                &device,
+                &queue,
+                include_bytes!("kasen_smol.PNG"),
+                "kasen_smol.PNG",
+                vec![
+                    [0.4131759, 0.00759614],
+                    [0.0048659444, 0.43041354],
+                    [0.28081453, 0.949397],
+                    [0.85967, 0.84732914],
+                    [0.9414737, 0.2652641],
+                ],
+            )
+            .unwrap(),
+        );
+
+        textures.push(
+            texture::Texture::from_bytes(
+                &device,
+                &queue,
+                include_bytes!("cirno.PNG"),
+                "cirno.PNG",
+                vec![
+                    [0.4131759, 0.00759614],
+                    [0.0048659444, 0.43041354],
+                    [0.28081453, 0.949397],
+                    [0.85967, 0.84732914],
+                    [0.9414737, 0.2652641],
+                ],
+            )
+            .unwrap(),
+        );
+
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
-                bind_group_layouts: &[],
+                bind_group_layouts: &[&bind_group_layouts[0]],
                 push_constant_ranges: &[],
             });
 
@@ -212,6 +286,36 @@ impl GameState {
             multiview: None, // 5.
         });
 
+        bind_groups.push(device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &bind_group_layouts[0],
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&textures[0].view), // CHANGED!
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&textures[0].sampler), // CHANGED!
+                },
+            ],
+            label: Some("diffuse_bind_group_0"),
+        }));
+
+        bind_groups.push(device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &bind_group_layouts[0],
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&textures[1].view), // CHANGED!
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&textures[1].sampler), // CHANGED!
+                },
+            ],
+            label: Some("diffuse_bind_group_1"),
+        }));
+
         GameState {
             instance,
             adapter,
@@ -223,6 +327,10 @@ impl GameState {
             render_pipelines: vec![render_pipeline],
             vertices: vec![],
             triangles: vec![],
+            textures,
+            bind_group_layouts,
+            bind_groups,
+            display: 0,
         }
     }
 
@@ -244,25 +352,27 @@ impl GameState {
                     self.vertices = vec![
                         Vertex {
                             pos: [-0.0868241, 0.49240386, 0.0],
-                            color: [1.0, 0.0, 0.0],
+                            tex_coords: [0.4131759, 0.00759614],
                         }, // A
                         Vertex {
                             pos: [-0.49513406, 0.06958647, 0.0],
-                            color: [0.0, 1.0, 0.0],
+                            tex_coords: [0.0048659444, 0.43041354],
                         }, // B
                         Vertex {
                             pos: [-0.21918549, -0.44939706, 0.0],
-                            color: [0.0, 0.0, 1.0],
+                            tex_coords: [0.28081453, 0.949397],
                         }, // C
                         Vertex {
                             pos: [0.35966998, -0.3473291, 0.0],
-                            color: [0.0, 0.0, 0.0],
+                            tex_coords: [0.85967, 0.84732914],
                         }, // D
                         Vertex {
                             pos: [0.44147372, 0.2347359, 0.0],
-                            color: [1.0, 1.0, 1.0],
+                            tex_coords: [0.9414737, 0.2652641],
                         }, // E
                     ];
+
+                    self.display = 0;
 
                     self.triangles = vec![
                         Triangle { indices: [0, 1, 4] },
@@ -273,20 +383,34 @@ impl GameState {
                     //not pressed
                     self.vertices = vec![
                         Vertex {
-                            pos: [0.5, 0.5, 0.0],
-                            color: [1.0, 0.0, 0.0],
-                        },
+                            pos: [-0.0868241, 0.49240386, 0.0],
+                            tex_coords: [0.4131759, 0.00759614],
+                        }, // A
                         Vertex {
-                            pos: [0.0, -0.5, 0.0],
-                            color: [0.0, 1.0, 0.0],
-                        },
+                            pos: [-0.49513406, 0.06958647, 0.0],
+                            tex_coords: [0.0048659444, 0.43041354],
+                        }, // B
                         Vertex {
-                            pos: [-0.5, 0.5, 0.0],
-                            color: [0.0, 0.0, 1.0],
-                        },
+                            pos: [-0.21918549, -0.44939706, 0.0],
+                            tex_coords: [0.28081453, 0.949397],
+                        }, // C
+                        Vertex {
+                            pos: [0.35966998, -0.3473291, 0.0],
+                            tex_coords: [0.85967, 0.84732914],
+                        }, // D
+                        Vertex {
+                            pos: [0.44147372, 0.2347359, 0.0],
+                            tex_coords: [0.9414737, 0.2652641],
+                        }, // E
                     ];
 
-                    self.triangles = vec![Triangle { indices: [0, 2, 1] }]
+                    self.display = 1;
+
+                    self.triangles = vec![
+                        Triangle { indices: [0, 1, 4] },
+                        Triangle { indices: [1, 2, 4] },
+                        Triangle { indices: [2, 3, 4] },
+                    ]
                 }
                 res = true;
             }
@@ -362,6 +486,11 @@ impl GameState {
             //self.temp_index_buffer = Some(index_buffer);
 
             render_pass.set_pipeline(&self.render_pipelines[0]);
+            if self.display == 0 {
+                render_pass.set_bind_group(0, &self.bind_groups[0], &[]);
+            } else {
+                render_pass.set_bind_group(0, &self.bind_groups[1], &[]);
+            }
             render_pass.set_vertex_buffer(0, buffers.vertex_buffer.slice(..));
             render_pass.set_index_buffer(buffers.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
             render_pass.draw_indexed(0..index_array.len() as u32, 0, 0..1);

@@ -5,6 +5,7 @@ pub struct Texture {
     pub texture: wgpu::Texture,
     pub view: wgpu::TextureView,
     pub sampler: wgpu::Sampler,
+    pub tex_coords: Vec<[f32; 2]>,
 }
 
 impl Texture {
@@ -13,9 +14,10 @@ impl Texture {
         queue: &wgpu::Queue,
         bytes: &[u8],
         label: &str,
+        tex_coords: Vec<[f32; 2]>,
     ) -> Result<Self> {
         let img = image::load_from_memory(bytes)?;
-        Self::from_image(device, queue, &img, Some(label))
+        Self::from_image(device, queue, &img, Some(label), tex_coords)
     }
 
     pub fn from_image(
@@ -23,6 +25,7 @@ impl Texture {
         queue: &wgpu::Queue,
         img: &image::DynamicImage,
         label: Option<&str>,
+        tex_coords: Vec<[f32; 2]>,
     ) -> Result<Self> {
         //converts the byte to RGBA
         let rgba = img.as_rgba8().unwrap();
@@ -92,6 +95,7 @@ impl Texture {
             texture,
             view,
             sampler,
+            tex_coords,
         })
     }
 }
